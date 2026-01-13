@@ -1,0 +1,88 @@
+@tailwind components;
+
+@layer components {
+/* ---------- Header (Smoothed) ---------- */
+
+.menu-header {
+  @apply bg-yellow-400 px-4 py-3
+         shadow-sm
+         flex items-center justify-center
+         rounded-b-2xl;
+}
+
+.menu-title {
+  @apply text-[1.15rem] font-medium tracking-wide text-black;
+}
+.menu-page {
+  @apply min-h-screen bg-gray-50 flex flex-col pb-20;
+}
+
+/* subtle depth line */
+.menu-header::after {
+  content: "";
+  @apply absolute inset-x-0 bottom-0 h-[1px] bg-black/10;
+}
+
+.menu-title {
+  @apply text-[1.15rem] font-medium tracking-wide text-black;
+}
+  /* ---------- Category Tabs ---------- */
+
+  .category-tabs {
+    @apply flex overflow-x-auto bg-white border-b gap-1 px-1;
+  }
+
+ .category-tab {
+  @apply px-4 py-[6px] my-1 rounded-full text-sm font-medium text-gray-500
+         transition-all duration-200;
+}
+
+.category-tab-active {
+  @apply bg-yellow-400 text-black shadow-sm;
+}
+
+
+  /* ---------- Menu Grid ---------- */
+
+  .menu-grid {
+    @apply grid grid-cols-2 sm:grid-cols-3 gap-4 p-4;
+  }
+
+  .menu-card {
+    @apply bg-white rounded-2xl shadow-sm p-3
+           flex flex-col justify-between
+           transition-all duration-200
+           hover:shadow-md hover:scale-[1.02];
+  }
+
+  .menu-image {
+    @apply w-full h-28 bg-gray-100 rounded-xl mb-3 overflow-hidden;
+  }
+
+  .menu-image-img {
+    @apply w-full h-full object-cover;
+  }
+
+  .menu-item-name {
+    @apply text-sm font-semibold text-gray-800 leading-snug;
+  }
+
+  .menu-item-price {
+    @apply text-gray-600 mt-1 text-sm;
+  }
+
+  .menu-add-btn {
+    @apply mt-3 bg-yellow-400 hover:bg-yellow-500
+           active:scale-95
+           text-black text-sm py-2 rounded-xl
+           transition-all duration-150;
+  }
+
+  /* ---------- Footer (future cart) ---------- */
+
+  .menu-footer {
+    @apply fixed bottom-20 left-0 right-0 bg-white
+           rounded-t-2xl shadow-lg p-4 z-40
+           max-w-md mx-auto;
+  }
+}
