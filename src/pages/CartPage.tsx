@@ -7,21 +7,10 @@ type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  imageUrl?: string;
 }
 
 const taxRate = 0.05;
-
-// Image mapping for cart items
-const MENU_ITEM_IMAGE_BY_ID: Record<number, string> = {
-  1: "/menu-images/1.jpg", 2: "/menu-images/2.jpg", 3: "/menu-images/3.jpg",
-  4: "/menu-images/4.jpg", 7: "/menu-images/7.jpg", 8: "/menu-images/8.jpg",
-  9: "/menu-images/9.jpg", 10: "/menu-images/10.jpg", 11: "/menu-images/11.jpg",
-  12: "/menu-images/12.jpg", 13: "/menu-images/13.jpg", 14: "/menu-images/14.jpg",
-  15: "/menu-images/15.jpg", 16: "/menu-images/16.jpg", 17: "/menu-images/17.jpg",
-  18: "/menu-images/18.jpg", 19: "/menu-images/19.jpg", 20: "/menu-images/20.jpg",
-  21: "/menu-images/21.jpg", 22: "/menu-images/22.jpg", 23: "/menu-images/23.jpg",
-  24: "/menu-images/24.jpg",
-};
 
 const PLACEHOLDER_IMAGE = "/menu-images/placeholder.png";
 
@@ -99,6 +88,11 @@ export default function CartPage() {
     }
 
     setIsPlacingOrder(true);
+    let guestToken = localStorage.getItem(`guestId_table_${table}`);
+    if (!guestToken) {
+      guestToken = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(`guestId_table_${table}`, guestToken);
+    }
 
     try {
       const response = await fetch(`${API_BASE_URL}/orders`, {
@@ -108,6 +102,7 @@ export default function CartPage() {
         },
         body: JSON.stringify({
           table,
+          guestToken,
           items: cart.map(item => ({
             menuItemId: item.id,
             quantity: item.quantity,
@@ -196,9 +191,18 @@ export default function CartPage() {
             >
               {/* Item Image */}
               <img
-                src={MENU_ITEM_IMAGE_BY_ID[item.id] || PLACEHOLDER_IMAGE}
+                src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
                 alt={item.name}
                 className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  const localPath = `/menu-images/${item.id}.jpg`;
+                  if (target.src.includes(item.imageUrl || '___')) {
+                    target.src = localPath;
+                  } else if (target.src.includes(localPath)) {
+                    target.src = PLACEHOLDER_IMAGE;
+                  }
+                }}
               />
 
               <div className="flex-1 min-w-0">

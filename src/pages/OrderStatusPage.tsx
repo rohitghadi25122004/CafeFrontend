@@ -136,8 +136,10 @@ export default function OrderStatusPage() {
       try {
         setError(null);
 
-        // Load orders for the table
-        const tableResponse = await fetch(`${API_BASE_URL}/orders/table/${tableParam}`);
+        // Load orders for the table (filtered by guestToken)
+        const guestToken = localStorage.getItem(`guestId_table_${tableParam}`);
+        const tableUrl = `${API_BASE_URL}/orders/table/${tableParam}${guestToken ? `?guestToken=${guestToken}` : ''}`;
+        const tableResponse = await fetch(tableUrl);
         if (tableResponse.ok) {
           const orders = await tableResponse.json();
           setOrdersForTable(orders || []);

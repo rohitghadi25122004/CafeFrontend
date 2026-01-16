@@ -9,6 +9,7 @@ type MenuItem = {
   name: string;
   price: string;
   isAvailable: boolean;
+  imageUrl?: string;
 };
 
 type Category = {
@@ -21,41 +22,8 @@ type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  imageUrl?: string;
 };
-/* ---------- TEMP IMAGE MAPPING (FRONTEND ONLY) ---------- */
-/*
-  IMPORTANT:
-  - This is TEMPORARY for MVP
-  - Images are mapped using menu item ID
-  - Images live in /public/menu-images/
-  - This WILL BE REMOVED when backend sends `imageUrl`
-*/
-
-const MENU_ITEM_IMAGE_BY_ID: Record<number, string> = {
-  1: "/menu-images/1.jpg",   // BlackTea
-  2: "/menu-images/2.jpg",   // GreenTea
-  3: "/menu-images/3.jpg",   // Tres Laches Sponge
-  4: "/menu-images/4.jpg",   // Choco Lava with Ice Cream
-  7: "/menu-images/7.jpg",   // Loaded Nachos
-  8: "/menu-images/8.jpg",   // Veg Nachos
-  9: "/menu-images/9.jpg",   // Nachos with Cheese
-  10: "/menu-images/10.jpg", // Peri Peri Fries
-  11: "/menu-images/11.jpg", // Chicken Fingers
-  12: "/menu-images/12.jpg", // Paneer Tikka Sandwich
-  13: "/menu-images/13.jpg", // Veg Cheese Grilled Sandwich
-  14: "/menu-images/14.jpg", // Watermelon Mojito
-  15: "/menu-images/15.jpg", // Coffee and Cookies
-  16: "/menu-images/16.jpg", // White Sauce Pasta
-  17: "/menu-images/17.jpg", // All American Pizza
-  18: "/menu-images/18.jpg", // Farmhouse Pizza
-  19: "/menu-images/19.jpg", // Thai Curry Rice
-  20: "/menu-images/20.jpg", // Green Thai Curry
-  21: "/menu-images/21.jpg", // Veg Burger
-  22: "/menu-images/22.jpg", // Chicken Crispy Burger
-  23: "/menu-images/23.jpg", // Paneer Tikka Hot Dog
-  24: "/menu-images/24.jpg", // Chicken Tikka Hot Dog
-};
-
 const PLACEHOLDER_IMAGE = "/menu-images/placeholder.png";
 
 /* ---------- Component ---------- */
@@ -74,6 +42,11 @@ export default function MenuPage() {
     if (!table) {
       alert("Invalid QR");
       return;
+    }
+
+    // Initialize guestId if not exists
+    if (!localStorage.getItem(`guestId_table_${table}`)) {
+      localStorage.setItem(`guestId_table_${table}`, `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
     }
 
     // Load cart from localStorage on mount
@@ -159,6 +132,7 @@ export default function MenuPage() {
           name: item.name,
           price: Number(item.price),
           quantity: 1,
+          imageUrl: item.imageUrl
         },
       ];
     });
@@ -187,8 +161,8 @@ export default function MenuPage() {
               key={category.id}
               onClick={() => setActiveCategoryId(category.id)}
               className={`category-tab ${activeCategoryId === category.id
-                  ? "category-tab-active"
-                  : ""
+                ? "category-tab-active"
+                : ""
                 }`}
             >
               {category.name}
@@ -204,10 +178,19 @@ export default function MenuPage() {
                 {/* Menu Item Image */}
                 <div className="menu-image">
                   <img
-                    src={MENU_ITEM_IMAGE_BY_ID[item.id] || PLACEHOLDER_IMAGE}
+                    src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
                     alt={item.name}
                     className="menu-image-img"
                     loading="lazy"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      const localPath = `/menu-images/${item.id}.jpg`;
+                      if (target.src.includes(item.imageUrl || '___')) {
+                        target.src = localPath;
+                      } else if (target.src.includes(localPath)) {
+                        target.src = PLACEHOLDER_IMAGE;
+                      }
+                    }}
                   />
                 </div>
 
@@ -239,9 +222,18 @@ export default function MenuPage() {
                 {cart.map(item => (
                   <div key={item.id} className="flex items-center gap-2 bg-white/90 rounded-lg p-2 border border-gray-100">
                     <img
-                      src={MENU_ITEM_IMAGE_BY_ID[item.id] || PLACEHOLDER_IMAGE}
+                      src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
                       alt={item.name}
                       className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        const localPath = `/menu-images/${item.id}.jpg`;
+                        if (target.src.includes(item.imageUrl || '___')) {
+                          target.src = localPath;
+                        } else if (target.src.includes(localPath)) {
+                          target.src = PLACEHOLDER_IMAGE;
+                        }
+                      }}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate">{item.name}</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "../config";
 
 type OrderSummary = {
@@ -9,6 +9,33 @@ type OrderSummary = {
   tax: number;
   total: number;
   itemCount: number;
+  items: {
+    name: string;
+    quantity: number;
+    price: number;
+  }[];
+};
+
+type Table = {
+  id: number;
+  tableNumber: number;
+  name: string;
+};
+
+type MenuItem = {
+  id: number;
+  name: string;
+  price: number;
+  isAvailable: boolean;
+  imageUrl?: string;
+};
+
+const PLACEHOLDER_IMAGE = "/menu-images/placeholder.png";
+
+type Category = {
+  id: number;
+  name: string;
+  items: MenuItem[];
 };
 
 const statusColors = {
@@ -28,40 +55,99 @@ const statusLabels = {
 };
 
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<'orders' | 'menu'>('orders');
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tables, setTables] = useState<Table[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>("1");
 
+  // Menu State
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newItem, setNewItem] = useState({
+    categoryId: "",
+    name: "",
+    price: ""
+  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, [selectedTable]);
+    fetchTables();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'orders') {
+      fetchOrders();
+      const interval = setInterval(fetchOrders, 30000);
+      return () => clearInterval(interval);
+    } else {
+      fetchCategories();
+    }
+  }, [selectedTable, activeTab]);
+
+  const fetchTables = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/tables`);
+      if (response.ok) {
+        const data = await response.json();
+        setTables(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch tables:", err);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
-      setError(null); // Clear previous errors
+      setError(null);
       const response = await fetch(`${API_BASE_URL}/orders/table/${selectedTable}`);
-
       if (!response.ok) {
         if (response.status === 404) {
-          setOrders([]); // No orders found, not an error
+          setOrders([]);
           return;
         }
         throw new Error(`Server error: ${response.status}`);
       }
-
       const ordersData = await response.json();
       setOrders(ordersData);
     } catch (err) {
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        setError("Cannot connect to server. Please make sure the backend server is running on port 3000.");
-      } else {
-        setError(err instanceof Error ? err.message : "Failed to load orders");
-      }
+      setError(err instanceof Error ? err.message : "Failed to load orders");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/menu?table=1`);
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories);
+      }
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
+    }
+  };
+
+  const endSession = async () => {
+    if (!confirm(`Are you sure you want to end session for Table ${selectedTable}? This will clear all orders and active guests.`)) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/tables/${selectedTable}/end-session`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        alert("Session ended successfully");
+        fetchOrders();
+      } else {
+        alert("Failed to end session");
+      }
+    } catch (err) {
+      alert("Error ending session");
     }
   };
 
@@ -69,171 +155,418 @@ export default function AdminPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to update order status (${response.status})`);
-      }
-
-      // Refresh orders
-      fetchOrders();
+      if (response.ok) fetchOrders();
     } catch (err) {
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        alert("Cannot connect to server. Please make sure the backend server is running on port 3000.");
-      } else {
-        alert(err instanceof Error ? err.message : "Failed to update order status");
-      }
+      alert("Failed to update status");
     }
   };
 
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center text-gray-500">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p>Loading orders...</p>
-        </div>
-      </div>
-    );
-  }
+  const addCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newCategoryName }),
+      });
+      if (response.ok) {
+        setNewCategoryName("");
+        fetchCategories();
+        alert("Category added");
+      }
+    } catch (err) {
+      alert("Failed to add category");
+    }
+  };
+
+  const addMenuItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/menu-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: Number(newItem.categoryId),
+          name: newItem.name,
+          price: Number(newItem.price)
+        }),
+      });
+
+      if (response.ok) {
+        const item = await response.json();
+        if (selectedFile) {
+          const formData = new FormData();
+          formData.append('image', selectedFile);
+          await fetch(`${API_BASE_URL}/admin/menu-items/${item.id}/image`, {
+            method: 'POST',
+            body: formData
+          });
+        }
+        setNewItem({ categoryId: "", name: "", price: "" });
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        alert("Menu item added successfully");
+      }
+    } catch (err) {
+      alert("Failed to add menu item");
+    }
+  };
+
+  const toggleAvailability = async (id: number, isAvailable: boolean) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/menu-items/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAvailable }),
+      });
+      if (response.ok) {
+        fetchCategories();
+      }
+    } catch (err) {
+      alert("Failed to update availability");
+    }
+  };
+
+  const handleEditImage = (itemId: number) => {
+    setUploadingItemId(itemId);
+    editFileInputRef.current?.click();
+  };
+
+  const onEditFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingItemId) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/menu-items/${uploadingItemId}/image`, {
+        method: 'POST',
+        body: formData
+      });
+      if (response.ok) {
+        alert("Image updated successfully");
+        fetchCategories();
+      }
+    } catch (err) {
+      alert("Failed to upload image");
+    } finally {
+      setUploadingItemId(null);
+      if (editFileInputRef.current) editFileInputRef.current.value = "";
+    }
+  };
+
+  const handleUpdateItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/menu-items/${editingItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingItem.name,
+          price: Number(editingItem.price)
+        }),
+      });
+      if (response.ok) {
+        setEditingItem(null);
+        fetchCategories();
+        alert("Item updated successfully");
+      }
+    } catch (err) {
+      alert("Failed to update item");
+    }
+  };
+
+  const deleteMenuItem = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this item? This action cannot be undone.")) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/menu-items/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        alert("Item deleted successfully");
+        fetchCategories();
+      } else {
+        alert("Failed to delete item");
+      }
+    } catch (err) {
+      alert("Error deleting item");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
       <header className="bg-yellow-400 px-4 py-4 shadow-sm rounded-b-2xl">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-xl font-bold text-black">Cafe Admin Dashboard</h1>
-          <p className="text-gray-700 text-sm mt-1">Manage orders and track status</p>
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-bold text-black">Cafe Admin dashboard</h1>
+            <p className="text-gray-700 text-sm mt-1">Manage ordering and menus</p>
+          </div>
+          <div className="flex bg-yellow-500/30 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'orders' ? 'bg-white text-black shadow-sm' : 'text-gray-700'}`}
+            >
+              Orders
+            </button>
+            <button
+              onClick={() => setActiveTab('menu')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'menu' ? 'bg-white text-black shadow-sm' : 'text-gray-700'}`}
+            >
+              Menu
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Table Selector */}
-      <div className="max-w-6xl mx-auto p-4">
-        <div className="bg-white p-4 rounded-2xl shadow-sm transition-all duration-200 hover:shadow-md">
-          <label className="block text-sm font-medium mb-2">Select Table:</label>
-          <select
-            value={selectedTable}
-            onChange={(e) => setSelectedTable(e.target.value)}
-            className="w-full md:w-auto px-4 py-2 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all duration-200"
-          >
-            <option value="1">Table 1</option>
-            <option value="2">Table 2</option>
-          </select>
-        </div>
-      </div>
+      {activeTab === 'orders' ? (
+        <>
+          <div className="max-w-6xl mx-auto p-4 flex flex-wrap gap-4 items-end">
+            <div className="bg-white p-4 rounded-2xl shadow-sm flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium mb-2">Select Table:</label>
+              <select
+                value={selectedTable}
+                onChange={(e) => setSelectedTable(e.target.value)}
+                className="w-full px-4 py-2 border-2 border-gray-100 rounded-xl focus:ring-2 focus:ring-yellow-400 outline-none"
+              >
+                {tables.map(t => (
+                  <option key={t.id} value={t.tableNumber}>Table {t.tableNumber}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={endSession}
+              className="bg-red-500 text-white px-6 py-4 rounded-2xl font-bold shadow-md hover:bg-red-600 active:scale-95 transition-all"
+            >
+              End Session / Clear Table
+            </button>
+          </div>
 
-      {/* Orders List */}
-      <main className="max-w-6xl mx-auto p-4">
-        {error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl">
-            <p className="font-medium mb-2">{error}</p>
-            {error.includes("Cannot connect to server") && (
-              <div className="mt-2 text-sm">
-                <p className="mb-1">To start the backend server, run:</p>
-                <code className="block bg-red-100 p-2 rounded">cd backend && npm run dev</code>
+          <main className="max-w-6xl mx-auto p-4">
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
               </div>
-            )}
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="bg-white p-8 rounded-2xl shadow-sm text-center text-gray-500 transition-all duration-200">
-            <p>No orders found for Table {selectedTable}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {orders.map((order) => (
-              <div key={order.id} className="bg-white p-5 rounded-2xl shadow-sm transition-all duration-200 hover:shadow-lg border-2 border-transparent hover:border-yellow-400">
-                {/* Order Header */}
-                <div className="flex items-start justify-between mb-4 pb-4 border-b">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-bold text-lg">Order #{order.id.slice(-8)}</h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColors[order.status as keyof typeof statusColors]}`}>
+            ) : error ? (
+              <div className="bg-red-50 text-red-700 p-4 rounded-2xl">{error}</div>
+            ) : orders.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No active orders found</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {orders.map((order) => (
+                  <div key={order.id} className="bg-white p-5 rounded-2xl shadow-sm border-2 border-transparent hover:border-yellow-400 transition-all">
+                    <div className="flex justify-between border-b pb-4 mb-4">
+                      <div>
+                        <h3 className="font-bold">Order #{order.id.slice(-8)}</h3>
+                        <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString()}</p>
+                      </div>
+                      <span className={`px-3 py-1 h-fit rounded-full text-xs font-semibold ${statusColors[order.status as keyof typeof statusColors]}`}>
                         {statusLabels[order.status as keyof typeof statusLabels]}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mb-1">
-                      {new Date(order.createdAt).toLocaleString()}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">{order.itemCount}</span> items
-                    </p>
+                    <div className="flex justify-between items-center mb-4">
+                      <p className="text-xl font-bold">₹{order.total}</p>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">{order.items.length} unique items</p>
+                    </div>
+
+                    {/* Items List */}
+                    <div className="bg-gray-50 rounded-xl p-3 mb-6 space-y-2">
+                      {order.items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span className="text-gray-700"><span className="font-bold text-black">{item.quantity}x</span> {item.name}</span>
+                          <span className="text-gray-500">₹{item.price * item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      {order.status === 'pending' && (
+                        <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="flex-1 bg-blue-500 text-white py-3 rounded-xl font-semibold">Start Preparing</button>
+                      )}
+                      {order.status === 'preparing' && (
+                        <button onClick={() => updateOrderStatus(order.id, 'ready')} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-semibold">Mark Ready</button>
+                      )}
+                      {order.status === 'ready' && (
+                        <button onClick={() => updateOrderStatus(order.id, 'completed')} className="flex-1 bg-gray-600 text-white py-3 rounded-xl font-semibold">Complete</button>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-800">₹{order.total}</p>
-                    <p className="text-xs text-gray-500">Total</p>
-                  </div>
-                </div>
-
-                {/* Status Progress Bar */}
-                <div className="mb-4">
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                    <span className={order.status === 'pending' || order.status === 'accepted' ? 'font-semibold text-yellow-600' : order.status === 'preparing' || order.status === 'ready' || order.status === 'completed' ? 'font-semibold text-green-600' : ''}>Received</span>
-                    <span className={order.status === 'preparing' ? 'font-semibold text-blue-600' : order.status === 'ready' || order.status === 'completed' ? 'font-semibold text-green-600' : ''}>Preparing</span>
-                    <span className={order.status === 'ready' || order.status === 'completed' ? 'font-semibold text-green-600' : ''}>Ready</span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-500 ease-in-out ${order.status === 'pending' || order.status === 'accepted' ? 'w-1/3 bg-yellow-400' :
-                          order.status === 'preparing' ? 'w-2/3 bg-blue-500' :
-                            order.status === 'ready' || order.status === 'completed' ? 'w-full bg-green-500' :
-                              'w-1/3 bg-gray-400'
-                        }`}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-wrap gap-2">
-                  {order.status === 'pending' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.id, 'preparing')}
-                      className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl text-sm font-semibold hover:bg-blue-600 transition-all duration-200 active:scale-95 shadow-md hover:shadow-lg"
-                    >
-                      🍳 Start Preparing
-                    </button>
-                  )}
-
-                  {order.status === 'preparing' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.id, 'ready')}
-                      className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl text-sm font-semibold hover:bg-green-600 transition-all duration-200 active:scale-95 shadow-md hover:shadow-lg"
-                    >
-                      ✅ Mark Ready
-                    </button>
-                  )}
-
-                  {order.status === 'ready' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.id, 'completed')}
-                      className="flex-1 px-4 py-3 bg-gray-600 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-all duration-200 active:scale-95 shadow-md hover:shadow-lg"
-                    >
-                      ✓ Complete Order
-                    </button>
-                  )}
-
-                  {(order.status === 'pending' || order.status === 'preparing') && (
-                    <button
-                      onClick={() => {
-                        if (confirm('Are you sure you want to cancel this order?')) {
-                          updateOrderStatus(order.id, 'cancelled');
-                        }
-                      }}
-                      className="px-4 py-3 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition-all duration-200 active:scale-95 shadow-md hover:shadow-lg"
-                    >
-                      ✕ Cancel
-                    </button>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
+            )}
+          </main>
+        </>
+      ) : (
+        <main className="max-w-4xl mx-auto p-4 space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm">
+            <h2 className="text-lg font-bold mb-4">Add Category</h2>
+            <form onSubmit={addCategory} className="flex gap-2">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Category Name (e.g. Beverages)"
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-xl outline-none"
+                required
+              />
+              <button type="submit" className="bg-yellow-400 px-6 py-2 rounded-xl font-bold">Add</button>
+            </form>
           </div>
-        )}
-      </main>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm">
+            <h2 className="text-lg font-bold mb-4">Add Menu Item</h2>
+            <form onSubmit={addMenuItem} className="space-y-4">
+              <select
+                value={newItem.categoryId}
+                onChange={(e) => setNewItem({ ...newItem, categoryId: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl outline-none"
+                required
+              >
+                <option value="">Select Category</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input
+                type="text"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                placeholder="Item Name"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl outline-none"
+                required
+              />
+              <div className="flex gap-4">
+                <input
+                  type="number"
+                  value={newItem.price}
+                  onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                  placeholder="Price (₹)"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl outline-none"
+                  required
+                />
+              </div>
+              <div className="border-2 border-dashed border-gray-200 p-4 rounded-xl text-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  accept="image/*"
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer text-gray-500">
+                  {selectedFile ? `Selected: ${selectedFile.name}` : "Click to select item image"}
+                </label>
+              </div>
+              <button type="submit" className="w-full bg-yellow-400 py-3 rounded-xl font-bold shadow-md">Add Menu Item</button>
+            </form>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm">
+            <h2 className="text-lg font-bold mb-6">Current Menu</h2>
+            <div className="space-y-8">
+              {categories.map(cat => (
+                <div key={cat.id}>
+                  <h3 className="font-bold text-gray-400 uppercase text-xs tracking-widest mb-4 border-l-4 border-yellow-400 pl-3">{cat.name}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {cat.items?.map(item => (
+                      <div key={item.id} className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                        {editingItem?.id === item.id ? (
+                          <form onSubmit={handleUpdateItem} className="space-y-3">
+                            <input
+                              type="text"
+                              value={editingItem.name}
+                              onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                              className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm"
+                              placeholder="Item Name"
+                              required
+                            />
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                value={editingItem.price}
+                                onChange={(e) => setEditingItem({ ...editingItem, price: Number(e.target.value) })}
+                                className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm"
+                                placeholder="Price"
+                                required
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="submit" className="flex-1 bg-yellow-400 text-black text-[10px] font-bold py-1.5 rounded-lg">Save</button>
+                              <button type="button" onClick={() => setEditingItem(null)} className="flex-1 bg-gray-200 text-gray-700 text-[10px] font-bold py-1.5 rounded-lg">Cancel</button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-3 mb-3">
+                              <img
+                                src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
+                                alt={item.name}
+                                className="w-12 h-12 rounded-lg object-cover bg-gray-100"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  const localPath = `/menu-images/${item.id}.jpg`;
+                                  if (target.src.includes(item.imageUrl || '___')) {
+                                    target.src = localPath;
+                                  } else if (target.src.includes(localPath)) {
+                                    target.src = PLACEHOLDER_IMAGE;
+                                  }
+                                }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate">{item.name}</p>
+                                <p className="text-xs text-gray-500">₹{item.price}</p>
+                              </div>
+                              <button
+                                onClick={() => toggleAvailability(item.id, !item.isAvailable)}
+                                className={`px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${item.isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                              >
+                                {item.isAvailable ? "Available" : "Unavailable"}
+                              </button>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingItem(item)}
+                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-blue-600 text-[10px] font-bold py-1.5 rounded-lg transition-colors"
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                onClick={() => handleEditImage(item.id)}
+                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                              >
+                                📷 Photo
+                              </button>
+                              <button
+                                onClick={() => deleteMenuItem(item.id)}
+                                className="bg-red-50 hover:bg-red-100 text-red-500 p-1.5 rounded-lg transition-colors"
+                                title="Delete Item"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <input
+              type="file"
+              ref={editFileInputRef}
+              onChange={onEditFileSelected}
+              accept="image/*"
+              className="hidden"
+            />
+          </div>
+        </main>
+      )}
     </div>
   );
 }
