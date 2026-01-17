@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Navigation from "../components/Navigation.js";
 import { API_BASE_URL } from "../config";
 import { getOptimizedImageUrl } from "../utils";
+import { Toast } from "../components/Toast";
 
 type CartItem = {
   id: number;
@@ -19,12 +20,17 @@ export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [table, setTable] = useState<string>("");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+  };
 
   useEffect(() => {
     const param = new URLSearchParams(window.location.search);
     const tableFromUrl = param.get("table");
     if (!tableFromUrl) {
-      alert("Invalid Session");
+      showToast("Invalid Session", "error");
       return;
     }
     setTable(tableFromUrl);
@@ -143,9 +149,9 @@ export default function CartPage() {
 
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        alert('Cannot connect to server. Please make sure the backend server is running on port 3000.\n\nTo start: cd backend && npm run dev');
+        showToast('Cannot connect to server. Please make sure the backend server is running on port 3000.\n\nTo start: cd backend && npm run dev', 'error');
       } else {
-        alert(error instanceof Error ? error.message : 'Failed to place order. Please try again.');
+        showToast(error instanceof Error ? error.message : 'Failed to place order. Please try again.', 'error');
       }
     } finally {
       setIsPlacingOrder(false);
@@ -172,6 +178,13 @@ export default function CartPage() {
           </div>
         </div>
         <Navigation />
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </>
     );
   };
@@ -267,6 +280,13 @@ export default function CartPage() {
       </div>
 
       <Navigation />
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </>
   );
 };

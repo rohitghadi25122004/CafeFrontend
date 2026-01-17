@@ -61,8 +61,17 @@ export default function OrderStatusPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [table, setTable] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<'success' | 'failed' | null>(null);
+  const [attemptedOrders, setAttemptedOrders] = useState<Set<string>>(() => {
+    const saved = sessionStorage.getItem('attempted_orders');
+    return new Set(saved ? JSON.parse(saved) : []);
+  });
+
+  const handlePaymentClick = (orderId: string) => {
+    const updated = new Set(attemptedOrders);
+    updated.add(orderId);
+    setAttemptedOrders(updated);
+    sessionStorage.setItem('attempted_orders', JSON.stringify(Array.from(updated)));
+  };
 
   const handleOrderClick = async (orderId: string) => {
     try {
@@ -79,37 +88,6 @@ export default function OrderStatusPage() {
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setVerificationResult(null);
-  };
-
-  const handleConfirmPayment = async (orderId: string) => {
-    setIsVerifying(true);
-    try {
-      // Simulate real-time bank verification delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const res = await fetch(`${API_BASE_URL}/orders/${orderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'paid' }),
-      });
-
-      if (res.ok) {
-        setVerificationResult('success');
-        // Refresh order details
-        const detailRes = await fetch(`${API_BASE_URL}/orders/${orderId}`);
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          setSelectedOrder(detail);
-        }
-      } else {
-        setVerificationResult('failed');
-      }
-    } catch (err) {
-      setVerificationResult('failed');
-    } finally {
-      setIsVerifying(false);
-    }
   };
 
   const getUpiLink = (platform: 'gpay' | 'paytm' | 'phonepe' | 'default', amount: number, orderId: string, items: OrderItem[]) => {
@@ -415,51 +393,53 @@ export default function OrderStatusPage() {
 
               {/* Payment Section */}
               <div className="pt-4 border-t border-gray-100">
-                {selectedOrder.status === 'paid' || verificationResult === 'success' || selectedOrder.status === 'preparing' || selectedOrder.status === 'ready' || selectedOrder.status === 'completed' ? (
-                  <div className="bg-green-50 p-6 rounded-2xl text-center space-y-4 animate-fade-in border border-green-100">
-                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-green-200">
-                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-green-800 font-bold text-lg">Thank You!</h3>
-                      <p className="text-green-700 text-sm mt-1">Your payment is being verified by our team.</p>
-                      <p className="text-green-600 text-xs mt-2 italic font-medium">Sit back and relax, your order is in good hands!</p>
-                    </div>
+                {attemptedOrders.has(selectedOrder.id) && (
+                  <div className="bg-green-50 p-4 rounded-xl text-center mb-4 border border-green-100 animate-fade-in">
+                    <p className="text-green-800 font-bold text-base">Payment Noted!</p>
+                    <p className="text-green-700 text-[11px] mt-1 leading-relaxed">
+                      If you've completed the transaction for this order, our team will verify it in a moment.
+                      Your order status will be updated shortly.
+                    </p>
                   </div>
-                ) : (
+                )}
+
+                {selectedOrder.status !== 'completed' && (
                   <div className="space-y-4">
                     <p className="font-semibold text-gray-800 text-sm">Pay with UPI</p>
                     <div className="grid grid-cols-1 gap-3">
-                      <a href={getUpiLink('gpay', selectedOrder.total, selectedOrder.id, selectedOrder.items)} className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all">
+                      <a
+                        href={getUpiLink('gpay', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
+                        onClick={() => handlePaymentClick(selectedOrder.id)}
+                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                      >
                         <img src="/gpay.png" alt="GPay" className="h-6" />
                       </a>
-                      <a href={getUpiLink('phonepe', selectedOrder.total, selectedOrder.id, selectedOrder.items)} className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all">
+                      <a
+                        href={getUpiLink('phonepe', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
+                        onClick={() => handlePaymentClick(selectedOrder.id)}
+                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                      >
                         <img src="/phonepay.png" alt="PhonePe" className="h-6" />
                       </a>
-                      <a href={getUpiLink('paytm', selectedOrder.total, selectedOrder.id, selectedOrder.items)} className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all">
+                      <a
+                        href={getUpiLink('paytm', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
+                        onClick={() => handlePaymentClick(selectedOrder.id)}
+                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                      >
                         <img src="/paytm.png" alt="Paytm" className="h-5" />
                       </a>
-                    </div>
 
-                    <div className="space-y-3 pt-2">
-                      <p className="text-[10px] text-gray-500 text-center font-medium">Done with the payment? Let us know!</p>
-                      <button
-                        onClick={() => handleConfirmPayment(selectedOrder.id)}
-                        disabled={isVerifying}
-                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-100 transition-all active:scale-95"
+                      {/* More Options */}
+                      <a
+                        href={getUpiLink('default', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
+                        onClick={() => handlePaymentClick(selectedOrder.id)}
+                        className="flex items-center justify-center py-3 bg-gray-50 border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
                       >
-                        {isVerifying ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            Verifying...
-                          </>
-                        ) : 'I have Completed Payment'}
-                      </button>
-                      {verificationResult === 'failed' && (
-                        <p className="text-xs text-red-500 text-center animate-pulse">Verification failed. Please try again.</p>
-                      )}
+                        <div className="flex items-center space-x-2">
+                          <img src="/otherupi.png" alt="UPI" className="h-6" />
+                          <span className="text-sm font-medium text-gray-600">More Options</span>
+                        </div>
+                      </a>
                     </div>
                   </div>
                 )}

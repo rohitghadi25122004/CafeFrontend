@@ -11,7 +11,7 @@ const LoadingScreen: React.FC = () => {
                 {/* Logo Container */}
                 <div className="relative bg-white p-4 rounded-full shadow-2xl animate-bounce-slow">
                     <img
-                        src="/logo.png"
+                        src="/logo.webp"
                         alt="Cafe Logo"
                         className="w-24 h-24 object-contain animate-float"
                     />

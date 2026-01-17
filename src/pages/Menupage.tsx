@@ -3,6 +3,7 @@ import Navigation from "../components/Navigation.js";
 import LoadingScreen from "../components/LoadingScreen";
 import { API_BASE_URL } from "../config";
 import { getOptimizedImageUrl, getCachedData, setCachedData } from "../utils";
+import { Toast } from "../components/Toast";
 import { MenuCardSkeleton } from "../components/Skeleton";
 import { useMemo } from "react";
 
@@ -38,13 +39,18 @@ export default function MenuPage() {
 
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const table = params.get("table");
 
     if (!table) {
-      alert("Invalid QR");
+      showToast("Invalid QR Code", "error");
       return;
     }
 
@@ -101,9 +107,9 @@ export default function MenuPage() {
       .catch(err => {
         console.error(err);
         if (err instanceof TypeError && err.message.includes('fetch')) {
-          alert("Cannot connect to server. Please make sure the backend server is running on port 3000.\n\nTo start: cd backend && npm run dev");
+          showToast("Cannot connect to server. Check if backend is running.", "error");
         } else {
-          alert(err instanceof Error ? err.message : "Menu could not be loaded. Please try again.");
+          showToast(err instanceof Error ? err.message : "Menu could not be loaded", "error");
         }
       })
       .finally(() => setLoading(false));
@@ -286,7 +292,7 @@ export default function MenuPage() {
                       }, 50);
                     } catch (err) {
                       console.error("Error saving cart:", err);
-                      alert("Error saving cart. Please try again.");
+                      showToast("Error saving cart. Please try again.", "error");
                     }
                   }}
                 >
@@ -300,6 +306,13 @@ export default function MenuPage() {
       </div>
 
       <Navigation />
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </>
   );
 }

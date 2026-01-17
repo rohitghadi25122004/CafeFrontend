@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { API_BASE_URL } from "../config";
 import LoadingScreen from "../components/LoadingScreen";
 import { formatOrderTime, getOptimizedImageUrl } from "../utils";
 import { OrderItemSkeleton } from "../components/Skeleton";
+import { Toast } from "../components/Toast";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 type OrderSummary = {
   id: string;
@@ -69,6 +71,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>("1");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Menu State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -84,6 +87,27 @@ export default function AdminPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Notifications & Modals
+  const [editingStatusOrderId, setEditingStatusOrderId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    type: 'info'
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchTables();
@@ -94,7 +118,7 @@ export default function AdminPage() {
     if (!isAuthenticated) return;
     if (activeTab === 'orders') {
       fetchOrders();
-      const interval = setInterval(fetchOrders, 30000);
+      const interval = setInterval(() => fetchOrders(true), 30000);
       return () => clearInterval(interval);
     } else {
       fetchCategories();
@@ -149,6 +173,7 @@ export default function AdminPage() {
   }
 
   const fetchTables = async () => {
+    setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/admin/tables`);
       if (response.ok) {
@@ -157,10 +182,13 @@ export default function AdminPage() {
       }
     } catch (err) {
       console.error("Failed to fetch tables:", err);
+    } finally {
+      if (tables.length > 0) setLoading(false);
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       setError(null);
       const response = await fetch(`${API_BASE_URL}/orders/table/${selectedTable}`);
@@ -176,15 +204,25 @@ export default function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load orders");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  if (loading && orders.length === 0 && activeTab === 'orders') {
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery.trim()) return orders;
+    const query = searchQuery.toLowerCase();
+    return orders.filter((order: OrderSummary) =>
+      order.id.toLowerCase().includes(query) ||
+      order.items.some(item => item.name.toLowerCase().includes(query))
+    );
+  }, [orders, searchQuery]);
+
+  if (loading && isAuthenticated && (tables.length === 0 || orders.length === 0)) {
     return <LoadingScreen />;
   }
 
   const fetchCategories = async () => {
+    setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/menu?table=1`);
       if (response.ok) {
@@ -193,24 +231,34 @@ export default function AdminPage() {
       }
     } catch (err) {
       console.error("Failed to fetch categories:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const endSession = async () => {
-    if (!confirm(`Are you sure you want to end session for Table ${selectedTable}? This will clear all orders and active guests.`)) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/tables/${selectedTable}/end-session`, {
-        method: 'POST'
-      });
-      if (response.ok) {
-        alert("Session ended successfully");
-        fetchOrders();
-      } else {
-        alert("Failed to end session");
+    setConfirmState({
+      isOpen: true,
+      title: 'End Session?',
+      message: `Are you sure you want to end session for Table ${selectedTable}? This will clear all orders and active guests.`,
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+        try {
+          const response = await fetch(`${API_BASE_URL}/admin/tables/${selectedTable}/end-session`, {
+            method: 'POST'
+          });
+          if (response.ok) {
+            showToast("Session ended successfully");
+            fetchOrders();
+          } else {
+            showToast("Failed to end session", "error");
+          }
+        } catch (err) {
+          showToast("Error ending session", "error");
+        }
       }
-    } catch (err) {
-      alert("Error ending session");
-    }
+    });
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
@@ -222,7 +270,7 @@ export default function AdminPage() {
       });
       if (response.ok) fetchOrders();
     } catch (err) {
-      alert("Failed to update status");
+      showToast("Failed to update status", "error");
     }
   };
 
@@ -237,10 +285,10 @@ export default function AdminPage() {
       if (response.ok) {
         setNewCategoryName("");
         fetchCategories();
-        alert("Category added");
+        showToast("Category added successfully");
       }
     } catch (err) {
-      alert("Failed to add category");
+      showToast("Failed to add category", "error");
     }
   };
 
@@ -270,10 +318,10 @@ export default function AdminPage() {
         setNewItem({ categoryId: "", name: "", price: "" });
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
-        alert("Menu item added successfully");
+        showToast("Menu item added successfully");
       }
     } catch (err) {
-      alert("Failed to add menu item");
+      showToast("Failed to add menu item", "error");
     }
   };
 
@@ -288,7 +336,7 @@ export default function AdminPage() {
         fetchCategories();
       }
     } catch (err) {
-      alert("Failed to update availability");
+      showToast("Failed to update availability", "error");
     }
   };
 
@@ -309,11 +357,11 @@ export default function AdminPage() {
         body: formData
       });
       if (response.ok) {
-        alert("Image updated successfully");
+        showToast("Image updated successfully");
         fetchCategories();
       }
     } catch (err) {
-      alert("Failed to upload image");
+      showToast("Failed to upload image", "error");
     } finally {
       setUploadingItemId(null);
       if (editFileInputRef.current) editFileInputRef.current.value = "";
@@ -336,45 +384,61 @@ export default function AdminPage() {
       if (response.ok) {
         setEditingItem(null);
         fetchCategories();
-        alert("Item updated successfully");
+        showToast("Item updated successfully");
       }
     } catch (err) {
-      alert("Failed to update item");
+      showToast("Failed to update item", "error");
     }
   };
 
   const deleteMenuItem = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this item? This action cannot be undone.")) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/menu-items/${id}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        alert("Item deleted successfully");
-        fetchCategories();
-      } else {
-        alert("Failed to delete item");
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Item?',
+      message: 'Are you sure you want to delete this item? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+        try {
+          const response = await fetch(`${API_BASE_URL}/admin/menu-items/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            showToast("Item deleted successfully");
+            fetchCategories();
+          } else {
+            showToast("Failed to delete item", "error");
+          }
+        } catch (err) {
+          showToast("Error deleting item", "error");
+        }
       }
-    } catch (err) {
-      alert("Error deleting item");
-    }
+    });
   };
 
   const deleteCategory = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this category? All items in this category might be affected. This action cannot be undone.")) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/categories/${id}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        alert("Category deleted successfully");
-        fetchCategories();
-      } else {
-        alert("Failed to delete category. Make sure it has no items first or check server logs.");
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Category?',
+      message: 'Are you sure you want to delete this category? All items in this category might be affected. This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+        try {
+          const response = await fetch(`${API_BASE_URL}/admin/categories/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            showToast("Category deleted successfully");
+            fetchCategories();
+          } else {
+            showToast("Failed to delete category. Make sure it has no items first.", "error");
+          }
+        } catch (err) {
+          showToast("Error deleting category", "error");
+        }
       }
-    } catch (err) {
-      alert("Error deleting category");
-    }
+    });
   };
 
   const handleLogout = () => {
@@ -420,25 +484,62 @@ export default function AdminPage() {
 
       {activeTab === 'orders' ? (
         <>
-          <div className="max-w-6xl mx-auto p-4 flex flex-wrap gap-4 items-end">
-            <div className="bg-white p-4 rounded-2xl shadow-sm flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium mb-2">Select Table:</label>
-              <select
-                value={selectedTable}
-                onChange={(e) => setSelectedTable(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-100 rounded-xl focus:ring-2 focus:ring-yellow-400 outline-none"
-              >
-                {tables.map(t => (
-                  <option key={t.id} value={t.tableNumber}>Table {t.tableNumber}</option>
-                ))}
-              </select>
+          <div className="max-w-6xl mx-auto p-4 space-y-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Table Selector & Action Row */}
+              <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                <div className="bg-white p-4 rounded-2xl shadow-sm flex-1">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Selected Table</label>
+                  <select
+                    value={selectedTable}
+                    onChange={(e) => setSelectedTable(e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-yellow-400 outline-none transition-all font-semibold"
+                  >
+                    {tables.map(t => (
+                      <option key={t.id} value={t.tableNumber}>Table {t.tableNumber}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl shadow-sm flex-1 flex flex-col justify-between">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Session Control</label>
+                  <button
+                    onClick={endSession}
+                    className="w-full bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl font-bold shadow-lg shadow-red-100 active:scale-95 transition-all text-sm"
+                  >
+                    Clear Table
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Box - Larger on Desktop */}
+              <div className="bg-white p-4 rounded-2xl shadow-sm lg:flex-[1.5]">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Search Orders</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by ID or item name..."
+                    className="w-full px-4 py-2.5 pl-10 pr-10 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-yellow-400 outline-none transition-all text-sm"
+                  />
+                  <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-9 h-9 flex items-center justify-center bg-gray-200 hover:bg-gray-300 active:scale-90 text-gray-600 rounded-full border-2 border-white shadow-lg z-20 transition-all"
+                      title="Clear Search"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <button
-              onClick={endSession}
-              className="bg-red-500 text-white px-6 py-4 rounded-2xl font-bold shadow-md hover:bg-red-600 active:scale-95 transition-all"
-            >
-              End Session / Clear Table
-            </button>
           </div>
 
           <main className="max-w-6xl mx-auto p-4">
@@ -450,20 +551,46 @@ export default function AdminPage() {
               </div>
             ) : error ? (
               <div className="bg-red-50 text-red-700 p-4 rounded-2xl">{error}</div>
-            ) : orders.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">No active orders found</div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl text-center text-gray-500">
+                {searchQuery ? `No orders matching "${searchQuery}"` : "No active orders found"}
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {orders.map((order) => (
+                {filteredOrders.map((order) => (
                   <div key={order.id} className="bg-white p-5 rounded-2xl shadow-sm border-2 border-transparent hover:border-yellow-400 transition-all">
                     <div className="flex justify-between border-b pb-4 mb-4">
                       <div>
                         <h3 className="font-bold">Order #{order.id.slice(-8)}</h3>
                         <p className="text-xs text-gray-500">{formatOrderTime(order.createdAt)}</p>
                       </div>
-                      <span className={`px-3 py-1 h-fit rounded-full text-xs font-semibold ${statusColors[order.status as keyof typeof statusColors]}`}>
-                        {statusLabels[order.status as keyof typeof statusLabels]}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span
+                          onClick={() => setEditingStatusOrderId(editingStatusOrderId === order.id ? null : order.id)}
+                          className={`px-3 py-1 h-fit rounded-full text-xs font-semibold cursor-pointer hover:shadow-md transition-all ${statusColors[order.status as keyof typeof statusColors]}`}
+                        >
+                          {statusLabels[order.status as keyof typeof statusLabels]} ✏️
+                        </span>
+                        {editingStatusOrderId === order.id && (
+                          <div className="flex flex-wrap justify-end gap-1 mt-1 bg-gray-50 p-2 rounded-lg border border-gray-100 shadow-inner max-w-[200px]">
+                            {Object.entries(statusLabels).map(([status, label]) => (
+                              <button
+                                key={status}
+                                onClick={() => {
+                                  updateOrderStatus(order.id, status);
+                                  setEditingStatusOrderId(null);
+                                }}
+                                className={`text-[8px] px-2 py-1 rounded-md font-bold uppercase transition-all ${order.status === status
+                                  ? 'bg-black text-white'
+                                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                  }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between items-center mb-4">
                       <p className="text-xl font-bold">₹{order.total}</p>
@@ -678,6 +805,23 @@ export default function AdminPage() {
           </div>
         </main>
       )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        type={confirmState.type}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
