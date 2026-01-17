@@ -410,23 +410,26 @@ export default function OrderStatusPage() {
                       <a
                         href={getUpiLink('gpay', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
                         onClick={() => handlePaymentClick(selectedOrder.id)}
-                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                        className="flex items-center justify-center gap-3 py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
                       >
                         <img src="/gpay.png" alt="GPay" className="h-6" />
+                        <span className="text-sm font-medium text-gray-700">GPay</span>
                       </a>
                       <a
                         href={getUpiLink('phonepe', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
                         onClick={() => handlePaymentClick(selectedOrder.id)}
-                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                        className="flex items-center justify-center gap-3 py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
                       >
                         <img src="/phonepay.png" alt="PhonePe" className="h-6" />
+                        <span className="text-sm font-medium text-gray-700">PhonePe</span>
                       </a>
                       <a
                         href={getUpiLink('paytm', selectedOrder.total, selectedOrder.id, selectedOrder.items)}
                         onClick={() => handlePaymentClick(selectedOrder.id)}
-                        className="flex items-center justify-center py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
+                        className="flex items-center justify-center gap-3 py-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-95 transition-all"
                       >
                         <img src="/paytm.png" alt="Paytm" className="h-5" />
+                        <span className="text-sm font-medium text-gray-700">Paytm</span>
                       </a>
 
                       {/* More Options */}
