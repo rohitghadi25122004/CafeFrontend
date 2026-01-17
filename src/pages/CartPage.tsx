@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Navigation from "../components/Navigation.js";
 import { API_BASE_URL } from "../config";
+import { getOptimizedImageUrl } from "../utils";
 
 type CartItem = {
   id: number;
@@ -191,7 +192,7 @@ export default function CartPage() {
             >
               {/* Item Image */}
               <img
-                src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
+                src={getOptimizedImageUrl(item.imageUrl, item.id)}
                 alt={item.name}
                 className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
                 onError={(e) => {

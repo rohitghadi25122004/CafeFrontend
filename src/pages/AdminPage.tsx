@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "../config";
+import LoadingScreen from "../components/LoadingScreen";
+import { formatOrderTime, getOptimizedImageUrl } from "../utils";
+import { OrderItemSkeleton } from "../components/Skeleton";
 
 type OrderSummary = {
   id: string;
@@ -40,6 +43,7 @@ type Category = {
 
 const statusColors = {
   pending: "bg-yellow-100 text-yellow-800",
+  paid: "bg-green-500 text-white shadow-sm",
   preparing: "bg-blue-100 text-blue-800",
   ready: "bg-green-100 text-green-800",
   completed: "bg-gray-100 text-gray-800",
@@ -48,6 +52,7 @@ const statusColors = {
 
 const statusLabels = {
   pending: "Pending",
+  paid: "PAID",
   preparing: "Preparing",
   ready: "Ready",
   completed: "Completed",
@@ -174,6 +179,10 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
+  if (loading && orders.length === 0 && activeTab === 'orders') {
+    return <LoadingScreen />;
+  }
 
   const fetchCategories = async () => {
     try {
@@ -434,8 +443,10 @@ export default function AdminPage() {
 
           <main className="max-w-6xl mx-auto p-4">
             {loading ? (
-              <div className="flex justify-center py-20">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <OrderItemSkeleton key={i} />
+                ))}
               </div>
             ) : error ? (
               <div className="bg-red-50 text-red-700 p-4 rounded-2xl">{error}</div>
@@ -448,7 +459,7 @@ export default function AdminPage() {
                     <div className="flex justify-between border-b pb-4 mb-4">
                       <div>
                         <h3 className="font-bold">Order #{order.id.slice(-8)}</h3>
-                        <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString()}</p>
+                        <p className="text-xs text-gray-500">{formatOrderTime(order.createdAt)}</p>
                       </div>
                       <span className={`px-3 py-1 h-fit rounded-full text-xs font-semibold ${statusColors[order.status as keyof typeof statusColors]}`}>
                         {statusLabels[order.status as keyof typeof statusLabels]}
@@ -470,7 +481,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex gap-2">
-                      {order.status === 'pending' && (
+                      {(order.status === 'pending' || order.status === 'paid') && (
                         <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="flex-1 bg-blue-500 text-white py-3 rounded-xl font-semibold">Start Preparing</button>
                       )}
                       {order.status === 'preparing' && (
@@ -602,7 +613,7 @@ export default function AdminPage() {
                           <>
                             <div className="flex items-center gap-3 mb-3">
                               <img
-                                src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
+                                src={getOptimizedImageUrl(item.imageUrl, item.id)}
                                 alt={item.name}
                                 className="w-12 h-12 rounded-lg object-cover bg-gray-100"
                                 onError={(e) => {

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import Navigation from "../components/Navigation.js";
+import LoadingScreen from "../components/LoadingScreen";
 import { API_BASE_URL } from "../config";
+import { getOptimizedImageUrl, getCachedData, setCachedData } from "../utils";
+import { MenuCardSkeleton } from "../components/Skeleton";
+import { useMemo } from "react";
 
 /* ---------- Types ---------- */
 
@@ -62,6 +66,15 @@ export default function MenuPage() {
       }
     }
 
+    const cacheKey = `menu_table_${table}`;
+    const cachedMenu = getCachedData(cacheKey);
+    if (cachedMenu) {
+      setCategories(cachedMenu);
+      if (cachedMenu.length > 0) setActiveCategoryId(cachedMenu[0].id);
+      setLoading(false);
+      return;
+    }
+
     fetch(`${API_BASE_URL}/menu?table=${table}`)
       .then(async res => {
         if (!res.ok) {
@@ -79,6 +92,7 @@ export default function MenuPage() {
         }
 
         setCategories(data.categories);
+        setCachedData(cacheKey, data.categories);
 
         if (data.categories.length > 0) {
           setActiveCategoryId(data.categories[0].id);
@@ -106,13 +120,20 @@ export default function MenuPage() {
     }
   }, [cart]);
 
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center text-gray-500">
-        Loading menu...
-      </div>
-    );
+  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPrice = cart.reduce(
+    (sum, i) => sum + i.price * i.quantity,
+    0
+  );
+  const activeCategory = useMemo(() =>
+    categories.find(c => c.id === activeCategoryId),
+    [categories, activeCategoryId]
+  );
+
+  if (loading && categories.length === 0) {
+    return <LoadingScreen />;
   }
+
   function addToCart(item: MenuItem) {
     setCart(prev => {
       const existing = prev.find(ci => ci.id === item.id);
@@ -137,14 +158,6 @@ export default function MenuPage() {
       ];
     });
   }
-  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
-  const totalPrice = cart.reduce(
-    (sum, i) => sum + i.price * i.quantity,
-    0
-  );
-  const activeCategory = categories.find(
-    c => c.id === activeCategoryId
-  );
 
   return (
     <>
@@ -173,12 +186,15 @@ export default function MenuPage() {
         {/* ---------- MENU GRID ---------- */}
         <main>
           <div className="menu-grid">
-            {activeCategory?.items.map(item => (
+            {loading && categories.length > 0 && Array.from({ length: 6 }).map((_, i) => (
+              <MenuCardSkeleton key={i} />
+            ))}
+            {!loading && activeCategory?.items.map(item => (
               <div key={item.id} className="menu-card">
                 {/* Menu Item Image */}
                 <div className="menu-image">
                   <img
-                    src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
+                    src={getOptimizedImageUrl(item.imageUrl, item.id)}
                     alt={item.name}
                     className="menu-image-img"
                     loading="lazy"
@@ -222,7 +238,7 @@ export default function MenuPage() {
                 {cart.map(item => (
                   <div key={item.id} className="flex items-center gap-2 bg-white/90 rounded-lg p-2 border border-gray-100">
                     <img
-                      src={`${item.imageUrl}${item.imageUrl?.includes('?') ? '&' : '?'}t=${Date.now()}`}
+                      src={getOptimizedImageUrl(item.imageUrl, item.id)}
                       alt={item.name}
                       className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                       onError={(e) => {
