@@ -110,7 +110,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchTables();
+      setLoading(true);
+      fetchTables().finally(() => setLoading(false));
     }
   }, [isAuthenticated]);
 
@@ -136,44 +137,7 @@ export default function AdminPage() {
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full space-y-6 text-center animate-fade-in">
-          <div className="bg-yellow-400 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-lg mb-4">
-            <svg className="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 italic">Cafe <span className="text-yellow-500">Admin</span></h1>
-          <p className="text-gray-500 text-sm">Please enter your 4-digit security PIN to access the dashboard.</p>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="••••"
-              className="w-full text-center text-2xl tracking-[1em] py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-yellow-400 transition-all font-mono"
-              autoFocus
-            />
-            {loginError && <p className="text-red-500 text-xs font-medium">{loginError}</p>}
-            <button
-              type="submit"
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black py-4 rounded-2xl font-bold shadow-lg shadow-yellow-200 transition-all active:scale-95"
-            >
-              Unlock Dashboard
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   const fetchTables = async () => {
-    setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/admin/tables`);
       if (response.ok) {
@@ -182,8 +146,6 @@ export default function AdminPage() {
       }
     } catch (err) {
       console.error("Failed to fetch tables:", err);
-    } finally {
-      if (tables.length > 0) setLoading(false);
     }
   };
 
@@ -216,10 +178,6 @@ export default function AdminPage() {
       order.items.some(item => item.name.toLowerCase().includes(query))
     );
   }, [orders, searchQuery]);
-
-  if (loading && isAuthenticated && (tables.length === 0 || orders.length === 0)) {
-    return <LoadingScreen />;
-  }
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -445,6 +403,47 @@ export default function AdminPage() {
     localStorage.removeItem("adminAuth");
     setIsAuthenticated(false);
   };
+
+  if (loading && isAuthenticated) {
+    return <LoadingScreen />;
+  }
+
+  // Authentication check - return login form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full space-y-6 text-center animate-fade-in">
+          <div className="bg-yellow-400 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-lg mb-4">
+            <svg className="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 italic">Cafe <span className="text-yellow-500">Admin</span></h1>
+          <p className="text-gray-500 text-sm">Please enter your 4-digit security PIN to access the dashboard.</p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="••••"
+              className="w-full text-center text-2xl tracking-[1em] py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-yellow-400 transition-all font-mono"
+              autoFocus
+            />
+            {loginError && <p className="text-red-500 text-xs font-medium">{loginError}</p>}
+            <button
+              type="submit"
+              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black py-4 rounded-2xl font-bold shadow-lg shadow-yellow-200 transition-all active:scale-95"
+            >
+              Unlock Dashboard
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
